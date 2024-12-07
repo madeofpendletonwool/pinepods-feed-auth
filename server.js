@@ -5,15 +5,18 @@ const fs = require('fs-extra');
 const path = require('path');
 const md = new MarkdownIt({
     html: true,
-    breaks: true,  // Convert '\n' to <br>
-    linkify: true, // Convert URLs to links
-    typographer: true, // Enable smartquotes and other typographic replacements
+    breaks: true,
+    linkify: true,
+    typographer: true,
+    // Add markdown-it options to preserve formatting
+    xhtmlOut: true,
+    // Configure list rendering
+    listIndent: true,
 });
 const basicAuth = require('express-basic-auth');
 
 const app = express();
 
-// Middleware for basic auth
 app.use(basicAuth({
     users: { 'test': 'test' },
     challenge: true,
@@ -22,10 +25,8 @@ app.use(basicAuth({
     }
 }));
 
-// Serve static files from the root directory
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
-// Explicitly serve the index.html at the root URL
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -40,7 +41,6 @@ function parseFrontMatter(content) {
         while (i < lines.length && lines[i].trim() !== '---') {
             const line = lines[i];
             const [key, ...valueParts] = line.split(':').map(part => part.trim());
-            // Join value parts back together in case the value contained colons
             frontMatter[key] = valueParts.join(':');
             i++;
         }
@@ -49,16 +49,11 @@ function parseFrontMatter(content) {
     return { frontMatter, body: lines.slice(i).join('\n') };
 }
 
-function wrapInCDATA(content) {
-    return `<![CDATA[${content}]]>`;
-}
-
 function createFeed() {
     const items = [];
     const postFiles = fs.readdirSync(path.join(__dirname, 'posts'))
         .filter(file => path.extname(file) === '.md')
         .sort((a, b) => {
-            // Sort by date in descending order
             const contentA = fs.readFileSync(path.join(__dirname, 'posts', a), 'utf8');
             const contentB = fs.readFileSync(path.join(__dirname, 'posts', b), 'utf8');
             const dateA = new Date(parseFrontMatter(contentA).frontMatter.date);
@@ -71,43 +66,52 @@ function createFeed() {
         const content = fs.readFileSync(filePath, 'utf8');
         const { frontMatter, body } = parseFrontMatter(content);
         
-        // Convert markdown to HTML with proper formatting
-        const htmlContent = md.render(body);
+        // Process markdown with proper line breaks and formatting
+        const processedBody = body
+            .replace(/\n\n+/g, '\n\n') // Normalize multiple line breaks
+            .replace(/\n\n/g, '</p><p>') // Convert double line breaks to paragraphs
+            .replace(/\n/g, '<br>'); // Convert single line breaks to <br>
+            
+        const htmlContent = md.render(processedBody);
 
-        // Create item object
+        // Create the item object
         const item = {
-            item: {
-                title: frontMatter.title || path.basename(file, '.md'),
-                link: `http://news.pinepods.online/posts/${file}`,
-                guid: {
-                    _attrs: {
-                        isPermaLink: "false"
-                    },
-                    _content: `http://news.pinepods.online/posts/${file}`
+            title: frontMatter.title || path.basename(file, '.md'),
+            link: `http://news.pinepods.online/posts/${file}`,
+            guid: {
+                _attrs: {
+                    isPermaLink: "false"
                 },
-                description: {
-                    _cdata: htmlContent
+                _content: `http://news.pinepods.online/posts/${file}`
+            },
+            description: {
+                _attrs: {
+                    type: "html"
                 },
-                "content:encoded": {
-                    _cdata: htmlContent
+                _content: htmlContent
+            },
+            "content:encoded": {
+                _attrs: {
+                    type: "html"
                 },
-                author: "Collin Pendleton",
-                pubDate: new Date(frontMatter.date || new Date()).toUTCString(),
-                "itunes:explicit": "no",
-                "itunes:author": "Collin Pendleton",
-            }
+                _content: htmlContent
+            },
+            author: "Collin Pendleton",
+            pubDate: new Date(frontMatter.date || new Date()).toUTCString(),
+            "itunes:explicit": "no",
+            "itunes:author": "Collin Pendleton"
         };
 
-        // Add episode image if specified in frontmatter
+        // Add episode image if specified
         if (frontMatter.image) {
-            item.item["itunes:image"] = {
+            item["itunes:image"] = {
                 _attrs: {
                     href: frontMatter.image
                 }
             };
         }
 
-        items.push(item);
+        items.push({ item });
     });
 
     return {
@@ -121,9 +125,7 @@ function createFeed() {
         _content: {
             channel: {
                 title: "Pinepods News Feed",
-                description: {
-                    _cdata: "This feed is a news feed for Pinepods. I release articles detailing every new release."
-                },
+                description: "This feed is a news feed for Pinepods. I release articles detailing every new release.",
                 link: "https://news.pinepods.online",
                 language: "en-US",
                 "atom:link": {
@@ -144,7 +146,7 @@ function createFeed() {
                     { _attrs: { text: "Technology" } },
                     { _attrs: { text: "Tech News" } }
                 ],
-                _content: items
+                item: items
             }
         }
     };
