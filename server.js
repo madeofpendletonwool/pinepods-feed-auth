@@ -52,19 +52,19 @@ function parseFrontMatter(content) {
 function processContent(content) {
     // Pre-process content for better formatting
     content = content
-        // Ensure empty lines around headers
+        // Add spacing around headers
         .replace(/^(#{1,6}.*)/gm, '\n\n$1\n\n')
-        // Convert dashes to bullets for consistency
-        .replace(/^[-*]\s+/gm, '* ')
-        // Add proper spacing for lists
-        .replace(/^(\* .*)$/gm, '\n$1')
+        // Ensure proper spacing for lists
+        .replace(/^[-*]\s*/gm, '\n* ')
         // Normalize multiple line breaks
-        .replace(/\n{3,}/g, '\n\n');
+        .replace(/\n{3,}/g, '\n\n')
+        // Ensure paragraphs have proper spacing
+        .replace(/\n\n/g, '\n\n');
 
     // Convert markdown to HTML
     let html = md.render(content);
 
-    // Sanitize HTML
+    // Clean up the HTML
     html = sanitizeHtml(html, {
         allowedTags: [
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -108,12 +108,8 @@ function createFeed() {
                 },
                 _content: `http://news.pinepods.online/posts/${file}`
             },
-            "content:encoded": {
-                _cdata: htmlContent
-            },
-            description: {
-                _cdata: htmlContent
-            },
+            description: htmlContent,
+            "content:encoded": htmlContent,
             author: "Collin Pendleton",
             pubDate: new Date(frontMatter.date || new Date()).toUTCString(),
             "itunes:explicit": "no",
