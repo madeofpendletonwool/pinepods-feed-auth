@@ -16,10 +16,6 @@
     "jstoxml": "^5.0.1",
     "markdown-it": "^14.1.0",
     "express-basic-auth": "^1.2.1",
-    "markdown-it-attrs": "^4.1.6",
-    "markdown-it-container": "^4.0.0",
-    "markdown-it-emoji": "^3.0.0",
-    "markdown-it-anchor": "^8.6.7",
     "sanitize-html": "^2.12.1"
   }
 }

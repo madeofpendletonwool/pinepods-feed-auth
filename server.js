@@ -1,25 +1,18 @@
 const express = require('express');
 const { toXML } = require('jstoxml');
 const MarkdownIt = require('markdown-it');
-const markdownItAttrs = require('markdown-it-attrs');
-const markdownItContainer = require('markdown-it-container');
-const markdownItEmoji = require('markdown-it-emoji');
-const markdownItAnchor = require('markdown-it-anchor');
 const sanitizeHtml = require('sanitize-html');
 const fs = require('fs-extra');
 const path = require('path');
 
-// Configure markdown-it with all the plugins
+// Configure markdown-it with base options only
 const md = new MarkdownIt({
     html: true,
     breaks: true,
     linkify: true,
-    typographer: true
-})
-.use(markdownItAttrs)
-.use(markdownItContainer)
-.use(markdownItEmoji)
-.use(markdownItAnchor);
+    typographer: true,
+    quotes: '""''',
+});
 
 const basicAuth = require('express-basic-auth');
 
@@ -60,28 +53,30 @@ function parseFrontMatter(content) {
 function processContent(content) {
     // Pre-process content for better formatting
     content = content
-        // Add proper spacing around headers
-        .replace(/^(#{1,6}.*)/gm, '\n$1\n')
-        // Convert list markers to consistent format
+        // Ensure empty lines around headers
+        .replace(/^(#{1,6}.*)/gm, '\n\n$1\n\n')
+        // Convert dashes to bullets for consistency
         .replace(/^[-*]\s+/gm, '* ')
-        // Ensure proper spacing around lists
-        .replace(/^(\* .*)/gm, '\n$1')
-        // Add proper spacing around paragraphs
+        // Add proper spacing for lists
+        .replace(/^(\* .*)$/gm, '\n$1')
+        // Convert emojis manually (common ones)
+        .replace(/:\)|🙂/g, '😊')
+        // Normalize multiple line breaks
         .replace(/\n{3,}/g, '\n\n');
 
     // Convert markdown to HTML
     let html = md.render(content);
 
-    // Sanitize HTML while keeping desired elements and attributes
+    // Sanitize HTML
     html = sanitizeHtml(html, {
-        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
-            'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
-        ]),
+        allowedTags: [
+            'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'strong', 'em', 'ul', 'ol', 'li', 'a', 'br',
+            'img', 'blockquote', 'code', 'pre'
+        ],
         allowedAttributes: {
-            ...sanitizeHtml.defaults.allowedAttributes,
-            'a': ['href', 'name', 'target'],
+            'a': ['href', 'target'],
             'img': ['src', 'alt', 'title'],
-            '*': ['id', 'class']
         }
     });
 
