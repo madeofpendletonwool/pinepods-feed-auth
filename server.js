@@ -3,16 +3,17 @@ const { toXML } = require('jstoxml');
 const MarkdownIt = require('markdown-it');
 const fs = require('fs-extra');
 const path = require('path');
+
+// Configure markdown-it with proper list handling
 const md = new MarkdownIt({
     html: true,
     breaks: true,
     linkify: true,
     typographer: true,
-    // Add markdown-it options to preserve formatting
-    xhtmlOut: true,
-    // Configure list rendering
-    listIndent: true,
-});
+    // Customize list rendering
+    listIndent: false,
+}).use(require('markdown-it-attrs')); // Add support for attributes if needed
+
 const basicAuth = require('express-basic-auth');
 
 const app = express();
@@ -49,6 +50,19 @@ function parseFrontMatter(content) {
     return { frontMatter, body: lines.slice(i).join('\n') };
 }
 
+function processMarkdown(content) {
+    // Pre-process lists to ensure proper formatting
+    content = content.replace(/^-\s/gm, '* '); // Convert - lists to * for consistency
+    
+    // Add spacing around headers
+    content = content.replace(/^(#{1,6}.*)/gm, '\n$1\n');
+    
+    // Ensure proper spacing for lists
+    content = content.replace(/^([*-])/gm, '\n$1');
+    
+    return md.render(content);
+}
+
 function createFeed() {
     const items = [];
     const postFiles = fs.readdirSync(path.join(__dirname, 'posts'))
@@ -66,15 +80,8 @@ function createFeed() {
         const content = fs.readFileSync(filePath, 'utf8');
         const { frontMatter, body } = parseFrontMatter(content);
         
-        // Process markdown with proper line breaks and formatting
-        const processedBody = body
-            .replace(/\n\n+/g, '\n\n') // Normalize multiple line breaks
-            .replace(/\n\n/g, '</p><p>') // Convert double line breaks to paragraphs
-            .replace(/\n/g, '<br>'); // Convert single line breaks to <br>
-            
-        const htmlContent = md.render(processedBody);
+        const htmlContent = processMarkdown(body);
 
-        // Create the item object
         const item = {
             title: frontMatter.title || path.basename(file, '.md'),
             link: `http://news.pinepods.online/posts/${file}`,
@@ -84,35 +91,52 @@ function createFeed() {
                 },
                 _content: `http://news.pinepods.online/posts/${file}`
             },
-            description: {
-                _attrs: {
-                    type: "html"
-                },
-                _content: htmlContent
-            },
-            "content:encoded": {
-                _attrs: {
-                    type: "html"
-                },
-                _content: htmlContent
-            },
+            "content:encoded": htmlContent,
+            description: htmlContent,
             author: "Collin Pendleton",
             pubDate: new Date(frontMatter.date || new Date()).toUTCString(),
             "itunes:explicit": "no",
-            "itunes:author": "Collin Pendleton"
-        };
-
-        // Add episode image if specified
-        if (frontMatter.image) {
-            item["itunes:image"] = {
+            "itunes:author": "Collin Pendleton",
+            "itunes:image": {
                 _attrs: {
-                    href: frontMatter.image
+                    href: frontMatter.image || "https://news.pinepods.online/assets/pinepods-logo.jpeg"
                 }
-            };
-        }
+            }
+        };
 
         items.push({ item });
     });
+
+    const channel = {
+        title: "Pinepods News Feed",
+        link: "https://news.pinepods.online",
+        language: "en-US",
+        description: "This feed is a news feed for Pinepods. I release articles detailing every new release.",
+        "atom:link": {
+            _attrs: {
+                href: "https://news.pinepods.online/feed.xml",
+                rel: "self",
+                type: "application/rss+xml"
+            }
+        },
+        image: {
+            url: "https://news.pinepods.online/assets/pinepods-logo.jpeg",
+            title: "Pinepods News Feed",
+            link: "https://news.pinepods.online"
+        },
+        "itunes:image": {
+            _attrs: {
+                href: "https://news.pinepods.online/assets/pinepods-logo.jpeg"
+            }
+        },
+        "itunes:author": "Collin Pendleton",
+        "itunes:explicit": "no",
+        "itunes:category": [
+            { _attrs: { text: "Technology" } },
+            { _attrs: { text: "Tech News" } }
+        ],
+        item: items
+    };
 
     return {
         _name: 'rss',
@@ -123,31 +147,7 @@ function createFeed() {
             "xmlns:itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"
         },
         _content: {
-            channel: {
-                title: "Pinepods News Feed",
-                description: "This feed is a news feed for Pinepods. I release articles detailing every new release.",
-                link: "https://news.pinepods.online",
-                language: "en-US",
-                "atom:link": {
-                    _attrs: {
-                        href: "https://news.pinepods.online/feed.xml",
-                        rel: "self",
-                        type: "application/rss+xml"
-                    }
-                },
-                "itunes:author": "Collin Pendleton",
-                "itunes:explicit": "no",
-                "itunes:image": {
-                    _attrs: {
-                        href: "https://news.pinepods.online/assets/pinepods-logo.jpeg"
-                    }
-                },
-                "itunes:category": [
-                    { _attrs: { text: "Technology" } },
-                    { _attrs: { text: "Tech News" } }
-                ],
-                item: items
-            }
+            channel
         }
     };
 }
