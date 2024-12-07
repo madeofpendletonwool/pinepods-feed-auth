@@ -10,8 +10,7 @@ const md = new MarkdownIt({
     html: true,
     breaks: true,
     linkify: true,
-    typographer: true,
-    quotes: '""''',
+    typographer: true
 });
 
 const basicAuth = require('express-basic-auth');
@@ -59,8 +58,6 @@ function processContent(content) {
         .replace(/^[-*]\s+/gm, '* ')
         // Add proper spacing for lists
         .replace(/^(\* .*)$/gm, '\n$1')
-        // Convert emojis manually (common ones)
-        .replace(/:\)|🙂/g, '😊')
         // Normalize multiple line breaks
         .replace(/\n{3,}/g, '\n\n');
 
