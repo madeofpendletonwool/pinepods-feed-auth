@@ -1,18 +1,25 @@
 const express = require('express');
 const { toXML } = require('jstoxml');
 const MarkdownIt = require('markdown-it');
+const markdownItAttrs = require('markdown-it-attrs');
+const markdownItContainer = require('markdown-it-container');
+const markdownItEmoji = require('markdown-it-emoji');
+const markdownItAnchor = require('markdown-it-anchor');
+const sanitizeHtml = require('sanitize-html');
 const fs = require('fs-extra');
 const path = require('path');
 
-// Configure markdown-it with proper list handling
+// Configure markdown-it with all the plugins
 const md = new MarkdownIt({
     html: true,
     breaks: true,
     linkify: true,
-    typographer: true,
-    // Customize list rendering
-    listIndent: false,
-}).use(require('markdown-it-attrs')); // Add support for attributes if needed
+    typographer: true
+})
+.use(markdownItAttrs)
+.use(markdownItContainer)
+.use(markdownItEmoji)
+.use(markdownItAnchor);
 
 const basicAuth = require('express-basic-auth');
 
@@ -50,17 +57,35 @@ function parseFrontMatter(content) {
     return { frontMatter, body: lines.slice(i).join('\n') };
 }
 
-function processMarkdown(content) {
-    // Pre-process lists to ensure proper formatting
-    content = content.replace(/^-\s/gm, '* '); // Convert - lists to * for consistency
-    
-    // Add spacing around headers
-    content = content.replace(/^(#{1,6}.*)/gm, '\n$1\n');
-    
-    // Ensure proper spacing for lists
-    content = content.replace(/^([*-])/gm, '\n$1');
-    
-    return md.render(content);
+function processContent(content) {
+    // Pre-process content for better formatting
+    content = content
+        // Add proper spacing around headers
+        .replace(/^(#{1,6}.*)/gm, '\n$1\n')
+        // Convert list markers to consistent format
+        .replace(/^[-*]\s+/gm, '* ')
+        // Ensure proper spacing around lists
+        .replace(/^(\* .*)/gm, '\n$1')
+        // Add proper spacing around paragraphs
+        .replace(/\n{3,}/g, '\n\n');
+
+    // Convert markdown to HTML
+    let html = md.render(content);
+
+    // Sanitize HTML while keeping desired elements and attributes
+    html = sanitizeHtml(html, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+            'img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
+        ]),
+        allowedAttributes: {
+            ...sanitizeHtml.defaults.allowedAttributes,
+            'a': ['href', 'name', 'target'],
+            'img': ['src', 'alt', 'title'],
+            '*': ['id', 'class']
+        }
+    });
+
+    return html;
 }
 
 function createFeed() {
@@ -80,7 +105,7 @@ function createFeed() {
         const content = fs.readFileSync(filePath, 'utf8');
         const { frontMatter, body } = parseFrontMatter(content);
         
-        const htmlContent = processMarkdown(body);
+        const htmlContent = processContent(body);
 
         const item = {
             title: frontMatter.title || path.basename(file, '.md'),
@@ -91,8 +116,12 @@ function createFeed() {
                 },
                 _content: `http://news.pinepods.online/posts/${file}`
             },
-            "content:encoded": htmlContent,
-            description: htmlContent,
+            "content:encoded": {
+                _cdata: htmlContent
+            },
+            description: {
+                _cdata: htmlContent
+            },
             author: "Collin Pendleton",
             pubDate: new Date(frontMatter.date || new Date()).toUTCString(),
             "itunes:explicit": "no",
